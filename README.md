@@ -14,9 +14,8 @@ This project will based on a cheap, good-performance arm-A based SOC named v3s, 
 * port and tailor kernel
 * ...
 
-
 ## Prepare
 
-驱动安装见：
+驱动安装见：[driver_install](./tools/drivers/README.md)
 
 环境搭建见：[prepare](./Prepare.md)
