@@ -1,12 +1,10 @@
 # pro_beyond_D
 
-## 0. Introduction
+## Introduction
 
-This project is mean to give a premotion for those whe has a basic knowledge about embedded system but don't know
-what to do next.
+This project is mean to give a premotion for those whe has a basic knowledge about embedded system but don't know what to do next.
 
-This project will based on a cheap, good-performance arm-A based SOC named v3s, and try to design a general sdk
-for this chip. During the whole process, content from below will be introduced:
+This project will based on a cheap, good-performance arm-A based SOC named v3s, and try to design a general sdk for this chip. During the whole process, content from below will be introduced:
 
 * usage of gcc toolchain for arm
 * basic knowledgement about computer organization and operation system
@@ -17,5 +15,8 @@ for this chip. During the whole process, content from below will be introduced:
 * ...
 
 
+## Prepare
 
+驱动安装见：
 
+环境搭建见：[prepare](./Prepare.md)
