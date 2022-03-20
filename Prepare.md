@@ -8,6 +8,8 @@
 
 [hard_float_toolchain](https://releases.linaro.org/components/toolchain/binaries/latest/arm-linux-gnueabihf/)
 
+（除了linaro之外，还有很多其他的工具链，大家有兴趣可以自行尝试）
+
 ## uboot
 
 ### 编译流程
