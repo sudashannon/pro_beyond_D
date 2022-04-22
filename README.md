@@ -23,3 +23,11 @@ This project will based on a cheap, good-performance arm-A based SOC named v3s, 
 V3S启动流程详解见：[bootflow](./Bootflow.md)
 
 裸机在线调试见：
+
+## uboot相关开发
+
+见：
+
+## kernel相关开发
+
+## rootfs
