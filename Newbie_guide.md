@@ -1,4 +1,4 @@
-# Prepare
+# Newbie Guide
 
 准备工作：
 
@@ -9,6 +9,10 @@
 [hard_float_toolchain](https://releases.linaro.org/components/toolchain/binaries/latest/arm-linux-gnueabihf/)
 
 （除了linaro之外，还有很多其他的工具链，大家有兴趣可以自行尝试）
+
+启动介质选择：
+
+SD卡或者SPI FLASH都可以，根据自己的板子做决定
 
 ## uboot
 
@@ -34,7 +38,15 @@
 
 3. 如果没有意外，应当此时可以生成所有固件。
 
+注：
+
+如果使用flash作为v3s的启动介质，需要使用v3s-spi-experimental分支的u-boot，并且在menuconfig中配置匹配board的flash：进入到 **Device Drivers ‣ SPI Flash Support，并在option list中选择合适的flash。**
+
+如果使用的是16MB以上的flash，需要勾选flash bank支持选项，否则最多只能读到16MB：对应宏**CONFIG_SPI_FLASH_BAR。**
+
 ### 启动参数传递和参数配置
+
+#### 文件传递
 
 在uboot环境变量里面需要设置内核和设备树的加载地址，使用 `boot.scr`可以直接传递这些参数。
 
@@ -47,19 +59,66 @@
 
 然后给对应的platform建立boot.cmd。
 
+最后生成boot.src文件。
+
+```
+ mkimage -C none -A arm -T script -d bootBSP.cmd boot.scr
+```
+
+#### 编译时指定
+
+在文件include/configs/sun8i.h中添加默认bootcmd和bootargs的环境变量设置，注意添加的位置在“#include <configs/sunxi-common.h>”的前边。
+
+```
+#define CONFIG_BOOTCOMMAND   "sf probe 0; "                           \
+                             "sf read 0x41800000 0x100000 0x10000; "  \
+                             "sf read 0x41000000 0x110000 0x400000; " \
+                             "bootz 0x41000000 - 0x41800000"
+
+#define CONFIG_BOOTARGS      "console=ttyS0,115200 earlyprintk panic=5 rootwait " \
+                             "mtdparts=spi32766.0:1M(uboot)ro,64k(dtb)ro,4M(kernel)ro,-(rootfs) root=31:03 rw rootfstype=jffs2"
+```
+
+环境命令解析：
+
+* sf probe 0; //初始化Flash设备
+* sf read 0x41800000 0x100000 0x10000; //从flash0x100000（1MB）位置读取dtb放到内存0x41800000偏移处。
+* sf read 0x41000000 0x110000 0x400000; //从flash0x110000（1MB+64KB）位置读取dtb放到内存0x41000000偏移处。
+* bootz 0x41000000 （内核地址）- 0x41800000（dtb地址） 启动内核
+
+启动参数解析：
+
+* console=ttyS0,115200 earlyprintk panic=5 rootwait //在串口0上输出信息
+* mtdparts=spi32766.0:1M(uboot)ro,64k(dtb)ro,4M(kernel)ro,-(rootfs) //spi32766.0时设备名，后面是分区大小、名字、读写属性。
+* root=31:03 rw rootfstype=jffs2 //通过root=31:03来告诉内核rootfs的位置mtdblock3；根文件系统格式为jffs2。
+
 ### 遇到的问题
 
 1. cc: not found
 
-> 安装gcc
-
+   > 安装gcc
+   >
 2. ./tools/binman/binman: not found
 
-> 安装python2
+   > 安装python2
+   >
+3. uboot启动报错：SF: unrecognized JEDEC id bytes: 0b, 40, 18
+   由于开发板的FLASH没在支持列表（`xt25f128b`），所以需要自己添加。修改 `u-boot/drivers/mtd/spi/spi_flash_ids.c`，根据上面flash信息增加 `xt25f128b`：
+
+   ```
+   const struct spi_flash_info spi_flash_ids[] = {
+       ...
+   	{"w25q128fw",	   INFO(0xef6018, 0x0,	64 * 1024,   256, RD_FULL | WR_QPP | SECT_4K) },
+   	{"xt25f128b",	   INFO(0x0b4018, 0x0,	64 * 1024,   256, RD_FULL | WR_QPP | SECT_4K) },
+       ...
+   };
+   ```
 
 ### 测试
 
-通过sunxi_fel或者xfel烧录固件到spiflash，观察能否引导SD卡中的image。
+通过sunxi_fel或者xfel烧录固件到spiflash，或者dd烧录到sd卡对应分区后，观察启动log。
+
+![avatar](docs\pics\Snipaste_2022-04-23_15-34-14.png)
 
 ## kernel
 
@@ -82,6 +141,11 @@
 > make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- INSTALL_MOD_PATH=out modules_install
 
 编译完成后，zImage在arch/arm/boot/下，驱动模块在out/下。
+
+注：
+
+如果使用SPI FLASH作为启动介质，则需要完成如下修改：
+
 
 ### 遇到的问题
 
@@ -245,7 +309,7 @@ make即可。
 
 到达本步骤后，此时已编译好的固件如下：
 
-uboot固件：
+包含SPL的uboot固件：
 
 linux镜像：
 
@@ -255,8 +319,26 @@ rootfs镜像：
 
 ### 分区规划
 
+#### SPI FLASH分区规划
+
+| 分区序号 | 分区大小 | 分区作用   | 地址空间及分区名               |
+| -------- | -------- | ---------- | ------------------------------ |
+| mtd0     | 1MB      | spl+uboot  | 0x0000000-0x0100000 : "uboot"  |
+| mtd1     | 64KB     | dtb文件    | 0x0100000-0x0110000: "dtb"     |
+| mtd2     | 4MB      | linux内核  | 0x0110000-0x0510000 : "kernel" |
+| mtd3     | 剩余     | 根文件系统 | 0x0510000-0x2000000 : "rootfs" |
+
+注：每个分区的大小必须是所用flash的擦除块大小的整数倍。
+
+#### SD CARD分区规划
+
 
 ### 固件打包
+
+#### SPI FLASH固件打包
+
+
+#### SD卡固件打包
 
 
 ### 启动方式
@@ -269,6 +351,12 @@ V3S的启动流程如下图所示：
 
 ### 烧录方式
 
-#### 从SPI 启动
+目前有两个工具可以进行SPI内的固件烧录，分别是sunxi-fel和xfel。
 
-#### 从SD卡启动
+#### SPI FLASH固件烧录
+
+根据[bootflow](./Bootflow.md) 一文中的分析，v3s的bootrom会引导地址位于0x0处的SPL固件，因此直接将打包好的flash固件直接烧录到0x0地址处即可。
+
+#### SD卡固件烧录
+
+无需烧录，打包时包含了烧写过程。

@@ -29,4 +29,10 @@ CONFIG_OF_LIBFDT_OVERLAY=y
 
 ## 启动
 
-在[bootflow](./Bootflow.md) 一文中，我们简单介绍了v3s bootrom的行为，
+### SPL
+
+在[bootflow](./Bootflow.md) 一文中，我们简单介绍了v3s bootrom的行为，在bootrom后，SOC运行内部ram中加载的spl，下面我们将结合uboot的代码对uboot spl启动流程做介绍。
+
+uboot的arch目录下包含了不同体系架构的特异化代码，这其中就有链接脚本（u-boot-spl.lds）和启动文件（start.S和vector.S）。
+
+_start -> reset -> lowlevel_init -> s_init ( arch/arm/mach-sunxi/board.c ) -> _main (crt0.S) -> board_init_x (board_f.c board_r.c)

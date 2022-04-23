@@ -18,16 +18,21 @@ This project will based on a cheap, good-performance arm-A based SOC named v3s, 
 
 驱动安装见：[driver_install](./tools/drivers/README.md)
 
-环境搭建见：[prepare](./Prepare.md)
+开箱手册见：[newbie](./Newbie_guide.md)
 
 V3S启动流程详解见：[bootflow](./Bootflow.md)
 
-裸机在线调试见：
+裸机在线调试见：[bootflow](./Bootflow.md)
 
-## uboot相关开发
+## uboot相关
 
-见：
+见：[uboot](./uboot.md)
 
-## kernel相关开发
+## kernel相关
 
-## rootfs
+## rootfs相关
+
+### user application
+
+
+### opencv
