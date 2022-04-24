@@ -118,7 +118,7 @@ SD卡或者SPI FLASH都可以，根据自己的板子做决定
 
 通过sunxi_fel或者xfel烧录固件到spiflash，或者dd烧录到sd卡对应分区后，观察启动log。
 
-![avatar](.\docs\pics\Snipaste_2022-04-23_15-34-14.png)
+<img src="./docs/pics/Snipaste_2022-04-23_15-34-14.png" />
 
 ## kernel
 
@@ -420,13 +420,11 @@ buildroot 不仅仅能构建根文件系统，也可以编译 linux 内核和 ub
 
 #### 配置启动脚本
 
-
 #### 配置busybox
 
 ```
 sudo make CROSS_COMPILE=arm-linux-gnueabihf- ARCH=arm busybox-menuconfig
 ```
-
 
 ### 编译
 
@@ -467,6 +465,8 @@ rootfs镜像：`buildroot/output/images/rootfs.tar`
 
 #### SPI FLASH分区规划
 
+![img](./docs/pics/20210206211129980.png)
+
 | 分区序号 | 分区大小 | 分区作用   | 地址空间及分区名               |
 | -------- | -------- | ---------- | ------------------------------ |
 | mtd0     | 1MB      | spl+uboot  | 0x0000000-0x0100000 : "uboot"  |
@@ -483,8 +483,6 @@ rootfs镜像：`buildroot/output/images/rootfs.tar`
 #### SPI FLASH固件打包
 
 #### SD卡固件打包
-
-### 启动
 
 V3S的启动流程如下图所示：
 
