@@ -118,9 +118,11 @@ SD卡或者SPI FLASH都可以，根据自己的板子做决定
 
 通过sunxi_fel或者xfel烧录固件到spiflash，或者dd烧录到sd卡对应分区后，观察启动log。
 
-![avatar](docs\pics\Snipaste_2022-04-23_15-34-14.png)
+![avatar](.\docs\pics\Snipaste_2022-04-23_15-34-14.png)
 
 ## kernel
+
+### 编译流程
 
 1. 获取内核源码
 
@@ -144,8 +146,88 @@ SD卡或者SPI FLASH都可以，根据自己的板子做决定
 
 注：
 
-如果使用SPI FLASH作为启动介质，则需要完成如下修改：
+如果使用SPI FLASH作为启动介质，则需要完成如下修改（`make CROSS_COMPILE=arm-linux-gnueabihf- ARCH=arm licheepi_zero_defconfig menuconfig`）：
 
+1. 配置文件系统支持
+
+   ```
+   File systems  --->
+   	[*] Miscellaneous filesystems  --->
+   		<*>   Journalling Flash File System v2 (JFFS2) support	# 打开jffs2的文件系统支持
+   		(0)     JFFS2 debugging verbosity (0 = quiet, 2 = noisy)
+   		[*]     JFFS2 write-buffering support
+   		[ ]     JFFS2 summary support
+   		[ ]     JFFS2 XATTR support
+   		[ ]     Advanced compression options for JFFS2
+   ```
+2. 修改对应spi-flash支持，在 `linux/drivers/mtd/spi-nor/spi-nor.c`中修改，增加下列flash支持（根据板子实际情况自行添加）
+
+   ```
+   { "xt25f128b", INFO(0x0b4018, 0, 64 * 1024, 256, SECT_4K) },
+   ```
+
+   注：对于开机后报大量 `JFFS2 erase size` 错误，官方是采用修改内核 `SECT_4K` 改为 `0`，即下面的方式。实际可以使用步骤3中的方法，取消 `Use small 4096 B erase sectors` 的勾选就可以，不用修改内核。
+3. 开启MTD的命令行分区表解析和flash支持
+
+   ```
+   Device Drivers  --->
+   	<*> Memory Technology Device (MTD) support  --->
+   		<*>   Command line partition table parsing	# 勾选，用来解析uboot传递过来的flash分区信息。（如果 bootarg 是用的我的方法一就需要勾选）
+   		<*>   Caching block device access to MTD devices	# 勾选，读写块设备用户模块
+   		<*>   SPI-NOR device support  --->
+   			[ ]   Use small 4096 B erase sectors	# 取消勾选，否则jffs2文件系统会报错
+   ```
+
+   注：lichee官方的u-boot 中 kernel cmdline 使用jffs2格式的 `mtdblock3`作为rootfs，但config中没有打开mtdblock设备接口。所以需要勾选 `Caching block device access to MTD devices`。
+   mkfs.jffs2 使用的最小擦除尺寸是 8KB，而spi flash的扇区大小是 4KB，所以按照扇区擦除的话，会无法使用，所以必须使用块擦除。即勾选 `Use small 4096 B erase sectors`。
+   如果不勾选 `Caching block device access to MTD devices`，会卡在 `Waiting for root device /dev/mtdblock3`
+4. dts配置
+
+   ```
+   &spi0 {
+       pinctrl-names = "default";
+       pinctrl-0 = <&spi0_pins_a>;
+       status = "okay";
+       spi-max-frequency = <50000000>;
+       flash: w25q128@0 {
+           #address-cells = <1>;
+           #size-cells = <1>;
+           compatible = "winbond,w25q128", "jedec,spi-nor";
+           reg = <0>;
+           spi-max-frequency = <50000000>;
+           partitions {
+               compatible = "fixed-partitions";
+               #address-cells = <1>;
+               #size-cells = <1>;
+
+               partition@0 {
+                   label = "u-boot";
+                   reg = <0x000000 0x100000>;
+                   read-only;
+               };
+
+               partition@100000 {
+                   label = "dtb";
+                   reg = <0x100000 0x10000>;
+                   read-only;
+               };
+
+               partition@110000 {
+                   label = "kernel";
+                   reg = <0x110000 0x400000>;
+                   read-only;
+               };
+
+               partition@510000 {
+                   label = "rootfs";
+                   reg = <0x510000 0xAF0000>;
+               };
+           };
+       };
+   };
+   ```
+
+   注：在uboot配置环节，已经设置了 `mtdparts=spi32766.0:1M(uboot)ro,64k(dtb)ro,4M(kernel)ro,-(rootfs)` ，通过bootargs传递给内核进行解析分区信息了，这里就不需要再修改了，否则需要在dts中为flash节点设备进行分区：
 
 ### 遇到的问题
 
@@ -178,7 +260,9 @@ buildroot中可以方便地加入第三方软件包（其实已经内置了很�
 
 ### 配置
 
-make menuconfig
+```
+make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- menuconfig
+```
 
 #### 配置 Target optionsTarget options 
 
@@ -204,7 +288,7 @@ Toolchain 
   -> Toolchain type = External toolchain 
   -> Toolchain = Custom toolchain //用户自己的交叉编译器 
   -> Toolchain origin = Pre-installed toolchain //预装的编译器 
-  -> Toolchain path =   //编译器绝对路径  
+  -> Toolchain path =   path_to_gcc_root_folder///编译器绝对路径  
   -> Toolchain prefix = $(ARCH)-linux-gnueabihf //前缀 
   -> External toolchain gcc version = 4.9.x 
   -> External toolchain kernel headers series = 4.1.x 
@@ -266,6 +350,54 @@ System configuration 
  -> [*] ubi image containing an ubifs root filesystem //如果使用 NAND 的话就用 ubifs
 ```
 
+如果存储介质为spi-flash，则配置如下：
+
+##### 方法1：自动生成
+
+生成 `rootfs.jffs2` 格式的rootfs，打开后会自动下载 `mtd-utils` 软件包，并在编译后自动生成相关格式的rootfs。
+
+```
+Filesystem images  --->
+	[*] jffs2 root filesystem
+			Flash Type (Parallel flash with 64 kB erase size)  ---> # 具有64 kB擦除大小的并行闪存 -e 参数
+		[*]   Do not use Cleanmarker	# 用于标记一个块是_完整地_被擦除了。 -n 参数 Do not use cleanmarkers if using NAND flash or Dataflash where the pagesize is not a power of
+		[*]   Pad output
+			(0xAF0000) Pad output size (0x0 = to end of EB) 	# 指定 jffs2 分区总空间 -p（--pad） 参数
+		Endianess (little-endian)  --->
+		[ ]   Produce a summarized JFFS2 image (NEW)	# 生成镜像的
+		[*]   Select custom virtual memory page size
+		(0x100) Virtual memory page size	# 虚拟内存页大小	-s 参数
+```
+
+##### 方法2：手动打包
+
+不需要更改buildroot的配置，在后续的环节手动打包。
+
+```
+# 下载jffs2文件系统制作工具
+sudo apt-get install mtd-utils
+
+# 解压
+# -C 当前目录的绝对目录
+mkdir rootfs && sudo tar -xvf rootfs.tar -C ./rootfs
+
+# 生成 rootfs.jffs2
+# -r ：指定要做成image的目录名
+# -o : 指定输出image的文件名
+# -s ：页大小 0x100 256 字节
+# -e ：块大小 0x10000 64k
+# -p ：或--pad 参数指定 jffs2 分区总空间
+# 由此计算得到 0x1000000(16M)-0x10000(64K)-0x100000(1M)-0x400000(4M)=0xAF0000
+# -n 如果挂载后会出现类似：CLEANMARKER node found at0x0042c000 has totlen 0xc != normal 0x0  的警告，则加上-n 就会消失。
+# jffs2.img 是生成的文件系统镜像
+sudo mkfs.jffs2 -s 0x100 -e 0x10000 -p 0xAF0000 -r rootfs -o rootfs.jffs2 -n
+
+# 为根文件系统制作jffs2镜像包
+sudo mkfs.jffs2 -s 0x100 -e 0x10000 -p 0xAF0000 -d rootfs/ -o jffs2.img
+# 或者
+sudo mkfs.jffs2 -s 0x100 -e 0x10000 --pad=0xAF0000 -d rootfs/ -o jffs2.img
+```
+
 #### 禁止编译 Linux 内核和 uboot
 
 buildroot 不仅仅能构建根文件系统，也可以编译 linux 内核和 uboot。当配置 buildroot，使能 linux 内核和 uboot 以后 buildroot 就会自动下载最新的 linux 内核和 uboot 源码并编译。但是我们一般都不会使用 buildroot 下载的 linux 内核和 uboot，因为 buildroot 下载的 linux 和 uboot官方源码，里面会缺少很多驱动文件，而且最新的 linux 内核和 uboot 会对编译器版本号有要求，可能导致编译失败。因此我们需要配置 buildroot，关闭 linux 内核和 uboot 的编译，只使用buildroot 来构建根文件系统，首先是禁止 Linux 内核的编译，配置如下：
@@ -286,10 +418,22 @@ buildroot 不仅仅能构建根文件系统，也可以编译 linux 内核和 ub
 
 此选项用于配置要选择的第三方库或软件、比如 alsa-utils、ffmpeg、iperf、ftp、ssh等工具，可以按需选择。
 
+#### 配置启动脚本
+
+
+#### 配置busybox
+
+```
+sudo make CROSS_COMPILE=arm-linux-gnueabihf- ARCH=arm busybox-menuconfig
+```
+
+
+### 编译
+
 配置完成以后就可以编译 buildroot 了，编译完成以后 buildroot 就会生成编译出来的根文件系统压缩包，我们可以直接使用。输入如下命令开始编译：
 
 ```
-sudo make //注意，一定要加 sudo，而且不能通过-jx 来指定多核编译！！！
+sudo make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- //注意，一定要加 sudo，而且不能通过-jx 来指定多核编译！！！
 ```
 
 buildroot 编译过程会很耗时，请耐心等待!编译完成以后就会在 /output/images 下生成根文件系统，即可使用。
@@ -301,21 +445,23 @@ g++: internal compiler error: Killed (program cc1plus) 
 Please submit a full bug report
 ```
 
-### 编译
-
-make即可。
+### 遇到的问题
 
 ## 烧录和启动
 
 到达本步骤后，此时已编译好的固件如下：
 
-包含SPL的uboot固件：
+包含SPL的uboot固件：`u-boot/u-boot-sunxi-with-spl.bin`
 
-linux镜像：
+linux镜像：`linux/arch/arm/boot/zImage`
 
-linux设备树：
+linux设备树：`linux/arch/arm/boot/dts/sun8i-v3s-licheepi-zero.dtb`
 
-rootfs镜像：
+linux模块：用户指定位置
+
+rootfs镜像：`buildroot/output/images/rootfs.tar`
+
+注：上述固件必须要满足分区大小，否则会出问题
 
 ### 分区规划
 
@@ -332,16 +478,13 @@ rootfs镜像：
 
 #### SD CARD分区规划
 
-
 ### 固件打包
 
 #### SPI FLASH固件打包
 
-
 #### SD卡固件打包
 
-
-### 启动方式
+### 启动
 
 V3S的启动流程如下图所示：
 
@@ -349,7 +492,7 @@ V3S的启动流程如下图所示：
 
 由上图可见，上电后，bootrom将先从SD0口检测有无启动信息，其次才是尝试从SPI0口NOR flash启动，最后是尝试从SPI0的Nand flash启动。
 
-### 烧录方式
+### 烧录
 
 目前有两个工具可以进行SPI内的固件烧录，分别是sunxi-fel和xfel。
 
@@ -360,3 +503,16 @@ V3S的启动流程如下图所示：
 #### SD卡固件烧录
 
 无需烧录，打包时包含了烧写过程。
+
+### 遇到的问题
+
+1. Starting kernel ...后没有任何打印信息
+
+   开启Kernel hacking--->Kernel low-level debugging functions
+
+   开启Kernel hacking--->Early printk
+
+   在uboot启动项上加上earlyprintk
+
+   setenv mmcboot "setenv bootargs console=ttyS0,115200 mem=512M earlyprintk libata.force=noncq root=/dev/mmcblk0p2 rw rootwait fbmode=VGA; bootz 0x8000 - 0x00000100"
+2.
