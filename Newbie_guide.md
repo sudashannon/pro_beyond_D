@@ -463,7 +463,7 @@ rootfs镜像：`buildroot/output/images/rootfs.tar`
 
 ### 分区规划
 
-#### SPI FLASH分区规划
+#### SPI FLASH分区规划![avatar](./docs\pics\20210206211129980.png)
 
 ![img](./docs/pics/20210206211129980.png)
 
